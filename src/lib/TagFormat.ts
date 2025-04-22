@@ -13,6 +13,7 @@ export type TagFormat = {
   name: string;
   blocks: Block[];
   tid: Uint8Array;
+  passwordBytes?: number; // Number of bytes to use for password calculation
 };
 
 export type Passwords = {
@@ -39,9 +40,9 @@ export function generateRandomTID(): Uint8Array {
 }
 
 // Calculate SHA-512 hash of EPC data with secret key and return first 4 bytes
-async function calculatePassword(epcData: Uint8Array, secretKey: string): Promise<Uint8Array> {
-  // Get first 96 bits (12 bytes) of EPC
-  const epcFirst96Bit = epcData.slice(0, 12);
+async function calculatePassword(epcData: Uint8Array, secretKey: string, bytesToUse: number = 12): Promise<Uint8Array> {
+  // Get specified number of bytes from EPC (default 12 bytes/96 bits)
+  const epcBytes = epcData.slice(0, bytesToUse);
   
   // Create encoder for UTF-8 string conversion
   const encoder = new TextEncoder();
@@ -50,7 +51,7 @@ async function calculatePassword(epcData: Uint8Array, secretKey: string): Promis
   // Create SHA-512 hash of EPC data
   const hash = await crypto.subtle.digest(
     'SHA-512',
-    new Uint8Array([...epcFirst96Bit, ...secretKeyBytes])
+    new Uint8Array([...epcBytes, ...secretKeyBytes])
   );
 
   // Return first 4 bytes (32 bits) of hash
@@ -58,18 +59,18 @@ async function calculatePassword(epcData: Uint8Array, secretKey: string): Promis
 }
 
 // Extract kill password and access password from SHA-512 hashes
-export async function calculatePasswords(epcData: Uint8Array, killKey?: string, accessKey?: string): Promise<Passwords> {
+export async function calculatePasswords(epcData: Uint8Array, killKey?: string, accessKey?: string, bytesToUse: number = 12): Promise<Passwords> {
   // Default passwords if keys not provided
   let killPassword = '00000000';
   let accessPassword = '00000000';
 
   if (killKey) {
-    const killBytes = await calculatePassword(epcData, killKey);
+    const killBytes = await calculatePassword(epcData, killKey, bytesToUse);
     killPassword = Array.from(killBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
   }
 
   if (accessKey) {
-    const accessBytes = await calculatePassword(epcData, accessKey);
+    const accessBytes = await calculatePassword(epcData, accessKey, bytesToUse);
     accessPassword = Array.from(accessBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
   }
 
@@ -82,8 +83,8 @@ export async function calculatePasswords(epcData: Uint8Array, killKey?: string, 
 }
 
 // Calculate RES by combining kill password and access password
-export async function calculateRES(epcData: Uint8Array): Promise<Uint8Array> {
-  const passwords = await calculatePasswords(epcData);
+export async function calculateRES(epcData: Uint8Array, bytesToUse: number = 12): Promise<Uint8Array> {
+  const passwords = await calculatePasswords(epcData, undefined, undefined, bytesToUse);
   
   // Convert both passwords from hex strings to bytes
   const killBytes = new Uint8Array(4);
@@ -121,8 +122,8 @@ export const exampleTagFormat: TagFormat = {
     {
       name: 'EPC-PC',
       sizeBits: 16,
-      editable: false, // Change from true to false
-      value: new Uint8Array([0x40, 0x00]), // Fixed at 40 00
+      editable: false,
+      value: new Uint8Array([0x40, 0x00]),
       description: 'RFID Meta Info (fixed)',
     },
     {
@@ -141,4 +142,42 @@ export const exampleTagFormat: TagFormat = {
     },
   ],
   tid: generateRandomTID(),
+  passwordBytes: 12, // Use first 12 bytes for password calculation
+};
+
+// BookWaves tag format (128 bit EPC)
+export const bookWavesTagFormat: TagFormat = {
+  name: 'Generic BookWaves 128-bit EPC',
+  blocks: [
+    {
+      name: 'EPC-CRC',
+      sizeBits: 16,
+      editable: false,
+      value: new Uint8Array([0xF8, 0xD4]),
+      description: 'CRC (fixed)',
+    },
+    {
+      name: 'EPC-PC',
+      sizeBits: 16,
+      editable: false,
+      value: new Uint8Array([0x40, 0x00]),
+      description: 'RFID Meta Info (fixed)',
+    },
+    {
+      name: 'EPC-DATA',
+      sizeBits: 128,
+      editable: true,
+      value: new Uint8Array([0x19,0xE9,0xF8,0x71,0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x29,0x00,0x01]),
+      description: 'Library/Media Data',
+    },
+    {
+      name: 'RES',
+      sizeBits: 64,
+      editable: false,
+      value: new Uint8Array([0x28,0x2F,0xFD,0xFB,0xE2,0xE2,0x21,0xDE]),
+      description: 'RES (auto-calculated)',
+    },
+  ],
+  tid: generateRandomTID(),
+  passwordBytes: 14, // Use first 14 bytes for password calculation
 };

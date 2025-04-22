@@ -1,5 +1,5 @@
 <script lang="ts">
-import { exampleTagFormat, calculateRES, calculatePasswords, generateRandomTID, type TagFormat } from '$lib/TagFormat';
+import { exampleTagFormat, calculateRES, calculatePasswords, generateRandomTID, type TagFormat, bookWavesTagFormat } from '$lib/TagFormat';
 import { decode } from '$lib/urncode40';
 import '@picocss/pico';
 
@@ -22,7 +22,7 @@ function generateRandomCRC(): Uint8Array {
 }
 
 // State variables with Svelte 5 reactivity
-let tagFormats = $state([exampleTagFormat]);
+let tagFormats = $state([exampleTagFormat, bookWavesTagFormat]);
 let selectedFormat = $state(exampleTagFormat);
 // Use $state directly for values that need direct manipulation
 let epcData = $state(new Uint8Array(exampleTagFormat.blocks.find(b => b.name === 'EPC-DATA')?.value ?? []));
@@ -34,18 +34,27 @@ let killKey = $state('');
 let accessKey = $state('');
 
 // Derived values that automatically update when epcData changes
-let res = $derived.by(async () => calculateRES(epcData));
+let res = $derived.by(async () => calculateRES(epcData, selectedFormat.passwordBytes));
 let passwords = $derived.by(async () => {
-  return await calculatePasswords(epcData, killKey, accessKey);
+  return await calculatePasswords(epcData, killKey, accessKey, selectedFormat.passwordBytes);
 });
 
 let killPassword = $derived.by(async () => (await passwords).kill);
 let accessPassword = $derived.by(async () => (await passwords).access);
 
+// Get section sizes based on selected format
+let librarySigleSize = $derived(selectedFormat.name === 'UB Dortmund 128-bit EPC' ? 4 : 4);
+let mediaNumberSize = $derived(selectedFormat.name === 'UB Dortmund 128-bit EPC' ? 8 : 10);
+let bitflagsSize = $derived(selectedFormat.name === 'UB Dortmund 128-bit EPC' ? 4 : 2);
+
 // Derived decoded values for each section of the tag
-let decodedLibrarySignle = $derived(decodeLibrarySignle([...epcData].slice(0, 4)));
-let decodedMediaNumber = $derived(decodeMediaNumber([...epcData].slice(4, 12)));
-let securityStatus = $derived(decodeSecurityStatus([...epcData].slice(12, 16)));
+let decodedLibrarySignle = $derived(decodeLibrarySignle([...epcData].slice(0, librarySigleSize)));
+let decodedMediaNumber = $derived(
+  selectedFormat.name === 'UB Dortmund 128-bit EPC' 
+  ? decodeMediaNumber([...epcData].slice(librarySigleSize, librarySigleSize + mediaNumberSize))
+  : decodeURNCode40MediaNumber([...epcData].slice(librarySigleSize, librarySigleSize + mediaNumberSize))
+);
+let securityStatus = $derived(decodeSecurityStatus([...epcData].slice(librarySigleSize + mediaNumberSize)));
 
 // Decode the library sigle using URN Code 40 decoding
 function decodeLibrarySignle(bytes: number[]): string {
@@ -65,6 +74,13 @@ function decodeMediaNumber(bytes: number[]): string {
   } catch (e) {
     return 'Invalid hex value';
   }
+}
+
+// Decode the media number using URN Code 40 (for BookWaves format)
+function decodeURNCode40MediaNumber(bytes: number[]): string {
+  const hexString = bytes.map(byteToHex).join('');
+  const decoded = decode(hexString);
+  return decoded || 'Invalid URN Code 40';
 }
 
 // Decode the security status from the bitflags
@@ -192,7 +208,7 @@ function updateEpcData(index: number, value: string) {
               <div class="section">
                 <div class="section-label">Library Sigle (URN Code 40 enc)</div>
                 <div class="byte-display">
-                  {#each [...epcData].slice(0, 4) as byte, i}
+                  {#each [...epcData].slice(0, librarySigleSize) as byte, i}
                     <input 
                       type="text" 
                       size="2" 
@@ -208,16 +224,18 @@ function updateEpcData(index: number, value: string) {
               </div>
               
               <div class="section">
-                <div class="section-label">Media Number</div>
+                <div class="section-label">
+                  Media Number {selectedFormat.name === 'Generic BookWaves 128-bit EPC' ? '(URN Code 40 enc)' : ''}
+                </div>
                 <div class="byte-display">
-                  {#each [...epcData].slice(4, 12) as byte, i}
+                  {#each [...epcData].slice(librarySigleSize, librarySigleSize + mediaNumberSize) as byte, i}
                     <input 
                       type="text" 
                       size="2" 
                       maxlength="2" 
                       value={byteToHex(byte)} 
-                      oninput={(e) => updateEpcData(i + 4, e.currentTarget.value)}
-                      class={invalidInputs.has(i + 4) ? 'invalid' : ''}
+                      oninput={(e) => updateEpcData(i + librarySigleSize, e.currentTarget.value)}
+                      class={invalidInputs.has(i + librarySigleSize) ? 'invalid' : ''}
                       pattern="[0-9A-Fa-f]{2}"
                     />
                     {#if (i+1)%4===0} <span style="margin-right: 0.25em;"></span> {/if}
@@ -229,14 +247,14 @@ function updateEpcData(index: number, value: string) {
               <div class="section">
                 <div class="section-label">Bitflags (e.g. security bit)</div>
                 <div class="byte-display">
-                  {#each [...epcData].slice(12, 16) as byte, i}
+                  {#each [...epcData].slice(librarySigleSize + mediaNumberSize, librarySigleSize + mediaNumberSize + bitflagsSize) as byte, i}
                     <input 
                       type="text" 
                       size="2" 
                       maxlength="2" 
                       value={byteToHex(byte)} 
-                      oninput={(e) => updateEpcData(i + 12, e.currentTarget.value)}
-                      class={invalidInputs.has(i + 12) ? 'invalid' : ''}
+                      oninput={(e) => updateEpcData(i + librarySigleSize + mediaNumberSize, e.currentTarget.value)}
+                      class={invalidInputs.has(i + librarySigleSize + mediaNumberSize) ? 'invalid' : ''}
                       pattern="[0-9A-Fa-f]{2}"
                     />
                   {/each}
@@ -261,6 +279,22 @@ function updateEpcData(index: number, value: string) {
               {:then value}
                 <div>Access Password: <span class="password-value">{value}</span></div>
               {/await}
+              <div class="format-info">
+                Using {selectedFormat.passwordBytes} bytes for password calculation
+                <details>
+                  <summary>How passwords are calculated</summary>
+                  <div class="calculation-details">
+                    <ol>
+                      <li>Take the first {selectedFormat.passwordBytes} bytes from the EPC-DATA field</li>
+                      <li>Combine these bytes with the provided secret key (kill key or access key)</li>
+                      <li>Calculate a SHA-512 hash of this combined value</li>
+                      <li>Take the first 4 bytes (32 bits) of the resulting hash</li>
+                      <li>This becomes the password (represented as an 8-character hex string)</li>
+                    </ol>
+                    <p><small>Security note: Passwords are derived on-demand and rely on the secrecy of your keys</small></p>
+                  </div>
+                </details>
+              </div>
             </div>
           </td>
           <td>RES (calculated)</td>
@@ -358,5 +392,16 @@ function updateEpcData(index: number, value: string) {
   .password-value {
     font-family: monospace;
     font-weight: bold;
+  }
+
+  .format-info {
+    font-size: 0.7em;
+    color: #666;
+    margin-top: 0.5em;
+  }
+
+  .calculation-details {
+    font-size: 0.75em;
+    margin-top: 0.5em;
   }
 </style>
