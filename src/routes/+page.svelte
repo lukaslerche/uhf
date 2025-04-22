@@ -133,12 +133,7 @@ function updateEpcData(index: number, value: string) {
 </script>
 
 <main class="container">
-  <hgroup>
-    <h1>RFID UHF tag formats for libraries</h1>
-    <h2>as supported by <a href="https://www.bookwaves.de" target="_blank">BookWaves</a></h2>
-  </hgroup>
-
-  <div class="grid">
+   <div class="grid">
     <label>
       Tag Format:
       <select onchange={(e) => selectFormat(e.currentTarget.selectedIndex)}>
