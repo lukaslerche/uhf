@@ -1,5 +1,5 @@
 {
-	"name": "uhfapp",
+	"name": "uhf",
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
@@ -35,5 +35,8 @@
 		"onlyBuiltDependencies": [
 			"esbuild"
 		]
+	},
+	"dependencies": {
+		"@picocss/pico": "^2.1.1"
 	}
 }
