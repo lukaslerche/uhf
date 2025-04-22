@@ -134,8 +134,8 @@ function updateEpcData(index: number, value: string) {
 
 <main class="container">
   <hgroup>
-    <h1>RFID UHF Library Tag Visualizer</h1>
-    <h2>Tag Configuration Tool</h2>
+    <h1>RFID UHF tag formats for libraries</h1>
+    <h2>as supported by <a href="https://www.bookwaves.de" target="_blank">BookWaves</a></h2>
   </hgroup>
 
   <div class="grid">
@@ -189,7 +189,7 @@ function updateEpcData(index: number, value: string) {
               {/each}
             </div>
           </td>
-          <td>CRC (random)</td>
+          <td>CRC (calculated on-chip)</td>
         </tr>
         <tr>
           <td>EPC-PC</td>
@@ -206,7 +206,7 @@ function updateEpcData(index: number, value: string) {
           <td style="max-width: 600px;">
             <div class="section-container">
               <div class="section">
-                <div class="section-label">Library Sigle (URN Code 40 enc)</div>
+                <div class="section-label">Library Sigle (<a href="https://urncode40.vercel.app/" target="_blank">URN Code 40 enc</a>)</div>
                 <div class="byte-display">
                   {#each [...epcData].slice(0, librarySigleSize) as byte, i}
                     <input 
@@ -309,7 +309,7 @@ function updateEpcData(index: number, value: string) {
             </div>
            
           </td>
-          <td>Tag ID (random)</td>
+          <td>Tag ID (unique, unchangable)</td>
         </tr>
       </tbody>
     </table>
